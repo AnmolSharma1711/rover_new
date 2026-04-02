@@ -41,7 +41,26 @@
             grid-template-rows: repeat(3, 80px);
             gap: 15px;
             justify-content: center;
+            margin-bottom: 28px;
         }
+        .project-panel {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(120px, 1fr));
+            gap: 12px;
+            width: 80%;
+            max-width: 320px;
+        }
+        .project-btn {
+            background-color: #ff9800;
+            border: none;
+            border-radius: 10px;
+            color: #111;
+            font-size: 16px;
+            font-weight: 700;
+            padding: 12px 10px;
+            cursor: pointer;
+        }
+        .project-btn:active { transform: scale(0.97); }
         .control-btn {
             background-color: #4CAF50;
             border: none;
@@ -80,6 +99,13 @@
         <button class="control-btn" id="btn-b" onmousedown="sendCommand('B')" onmouseup="sendCommand('S')" ontouchstart="sendCommand('B')" ontouchend="sendCommand('S')">B</button>
     </div>
 
+    <div class="project-panel">
+        <button class="project-btn" onclick="sendProjectCommand('P1')">Project 1</button>
+        <button class="project-btn" onclick="sendProjectCommand('P2')">Project 2</button>
+        <button class="project-btn" onclick="sendProjectCommand('P3')">Project 3</button>
+        <button class="project-btn" onclick="sendProjectCommand('P4')">Project 4</button>
+    </div>
+
     <script>
         // The UUIDs must exactly match your Arduino Uno BLE code
         const UART_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
@@ -87,6 +113,8 @@
         
         let bleDevice;
         let rxCharacteristic;
+        let projectModeActive = false;
+        let activeProject = null;
         const statusDiv = document.getElementById('status');
 
         document.getElementById('connectBtn').addEventListener('click', async () => {
@@ -116,6 +144,8 @@
                 bleDevice.addEventListener('gattserverdisconnected', () => {
                     statusDiv.innerText = "Status: Disconnected";
                     statusDiv.style.backgroundColor = "#f44336";
+                    projectModeActive = false;
+                    activeProject = null;
                 });
 
             } catch (error) {
@@ -124,7 +154,7 @@
             }
         });
 
-        async function sendCommand(cmd) {
+        async function writeBleCommand(cmd) {
             if (!rxCharacteristic) {
                 console.log("Not connected yet.");
                 return;
@@ -139,6 +169,32 @@
                 console.error("Write Error:", error);
             }
         }
+
+        async function sendCommand(cmd) {
+            // Manual commands are ignored while project mode is active.
+            if (projectModeActive && cmd !== 'S') {
+                console.log("Manual command ignored: project mode is active.");
+                return;
+            }
+
+            if (cmd === 'S') {
+                projectModeActive = false;
+                activeProject = null;
+                statusDiv.innerText = "Status: Stopped";
+                statusDiv.style.backgroundColor = "#333";
+            }
+
+            await writeBleCommand(cmd);
+        }
+
+        async function sendProjectCommand(projectCode) {
+            projectModeActive = true;
+            activeProject = projectCode;
+            statusDiv.innerText = `Status: Navigating to ${projectCode}`;
+            statusDiv.style.backgroundColor = "#ff9800";
+            await writeBleCommand(projectCode);
+        }
+
     </script>
 </body>
 </html>
