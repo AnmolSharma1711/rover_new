@@ -445,17 +445,22 @@
                     voiceTranscript.textContent = `✗ ${data.error || 'Request failed'}`;
                     console.error('Response error:', response.status, data);
                 } else if (data.success && data.transcript) {
-                    console.log('Voice response:', data);
+                    console.log('=== VOICE RECOGNITION RESULT ===');
                     console.log('Transcript:', data.transcript);
-                    console.log('Project detected:', data.project_detected);
+                    console.log('Matched Keyword:', data.matched_keyword);
+                    console.log('Project Detected:', data.project_detected);
+                    console.log('Full Response:', data);
                     
                     voiceTranscript.textContent = `✓ "${data.transcript}"`;
+                    if (data.matched_keyword) {
+                        voiceTranscript.textContent += ` [${data.matched_keyword}]`;
+                    }
                     if (data.project_detected) {
                         voiceTranscript.textContent += ` → PROJECT ${data.project_detected}`;
-                        console.log('Sending project command:', data.project_detected);
+                        console.log('✓ Sending project command:', data.project_detected);
                         sendProjectCommand(data.project_detected);
                     } else {
-                        console.warn('No project detected for transcript:', data.transcript);
+                        console.warn('❌ No project detected for transcript:', data.transcript);
                     }
                 } else {
                     voiceTranscript.textContent = `✗ ${data.error || 'Could not process audio'}`;

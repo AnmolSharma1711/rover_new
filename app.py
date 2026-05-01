@@ -102,12 +102,13 @@ def test_voice():
     test_transcript = data.get('transcript', 'fire test')
     
     logger.info(f"Testing voice recognition with: {test_transcript}")
-    project_num = process_voice_command(test_transcript)
+    project_num, matched_keyword = process_voice_command(test_transcript)
     
     return jsonify({
         'success': True,
         'transcript': test_transcript,
         'project_detected': project_num,
+        'matched_keyword': matched_keyword,
         'message': f'Project {project_num} detected' if project_num else 'No keywords matched'
     })
 
@@ -165,13 +166,14 @@ def recognize_speech():
             logger.info(f"Recognized: {transcript}")
             
             # Process voice command
-            project_num = process_voice_command(transcript)
-            logger.info(f"Final project_detected: {project_num} (type: {type(project_num)})")
+            project_num, matched_keyword = process_voice_command(transcript)
+            logger.info(f"Final project_detected: {project_num}, matched_keyword: {matched_keyword}")
             
             return jsonify({
                 'success': True,
                 'transcript': transcript,
-                'project_detected': project_num if project_num else None
+                'project_detected': project_num if project_num else None,
+                'matched_keyword': matched_keyword if matched_keyword else None
             })
             
         except socket.timeout:
@@ -224,7 +226,7 @@ def process_command():
         return jsonify({'error': 'No transcript provided'}), 400
     
     # Process voice command
-    project_num = process_voice_command(transcript)
+    project_num, matched_keyword = process_voice_command(transcript)
     
     if project_num:
         # Send command to Arduino
@@ -232,6 +234,7 @@ def process_command():
         return jsonify({
             'success': success,
             'project': project_num,
+            'matched_keyword': matched_keyword,
             'message': f'Project {project_num} command sent' if success else 'Failed to send command'
         })
     else:
@@ -245,7 +248,7 @@ def process_voice_command(transcript):
     
     if not transcript:
         logger.warning("Empty transcript received")
-        return None
+        return None, None
     
     transcript_lower = transcript.lower().strip()
     words = transcript_lower.split()
@@ -262,14 +265,14 @@ def process_voice_command(transcript):
             # Check if keyword is a complete word (word boundary matching)
             if keyword in words:
                 logger.info(f"✓ MATCH FOUND: '{keyword}' in {words} → Project {project_num}")
-                return project_num
+                return project_num, keyword
             # Also check as substring for robustness
             elif keyword in transcript_lower:
                 logger.info(f"✓ SUBSTRING MATCH: '{keyword}' in '{transcript_lower}' → Project {project_num}")
-                return project_num
+                return project_num, keyword
     
     logger.warning(f"❌ NO KEYWORDS MATCHED for: '{transcript}' (words: {words})")
-    return None
+    return None, None
 
 def send_project_command(project_num):
     """Send project command to Arduino via BLE"""
