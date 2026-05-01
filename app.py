@@ -1,12 +1,232 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, request, jsonify
 import os
+import json
+from pathlib import Path
+import logging
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+
+# Word to Project Mapping
+WORD_PROJECT_MAP = {
+    1: ['generator', 'system'],
+    2: ['drone', 'fire'],
+    3: ['rickshaw', 'alcohol'],
+    4: ['water', 'management']
+}
+
+# Global state
+class AppState:
+    def __init__(self):
+        self.ble_connected = False
+        self.active_project = None
+        self.project_mode_active = False
+
+app_state = AppState()
+
+# Try to import speech recognition library
+try:
+    import speech_recognition as sr
+    SPEECH_RECOGNITION_AVAILABLE = True
+    recognizer = sr.Recognizer()
+    logger.info("Speech Recognition library loaded successfully")
+except ImportError:
+    SPEECH_RECOGNITION_AVAILABLE = False
+    logger.warning("speech_recognition library not installed. Run: pip install SpeechRecognition")
+
+# Try to import BLE library
+try:
+    from bleak import BleakClient
+    import asyncio
+    BLE_AVAILABLE = True
+    logger.info("BLE library (bleak) loaded successfully")
+except ImportError:
+    BLE_AVAILABLE = False
+    logger.warning("bleak library not installed. Run: pip install bleak")
 
 @app.route('/')
 def index():
-    # Serves the index.html file from the templates folder
-    return render_template('index.html')
+    """Serve the main HTML page"""
+    return render_template('index.html', 
+                         speech_available=SPEECH_RECOGNITION_AVAILABLE,
+                         ble_available=BLE_AVAILABLE)
+
+@app.route('/api/status', methods=['GET'])
+def get_status():
+    """Get current connection and project status"""
+    return jsonify({
+        'ble_connected': app_state.ble_connected,
+        'active_project': app_state.active_project,
+        'project_mode_active': app_state.project_mode_active,
+        'speech_available': SPEECH_RECOGNITION_AVAILABLE,
+        'ble_available': BLE_AVAILABLE
+    })
+
+@app.route('/api/recognize-speech', methods=['POST'])
+def recognize_speech():
+    """Process audio file and recognize speech"""
+    
+    if not SPEECH_RECOGNITION_AVAILABLE:
+        return jsonify({'error': 'Speech recognition not available'}), 400
+    
+    if 'audio' not in request.files:
+        return jsonify({'error': 'No audio file provided'}), 400
+    
+    audio_file = request.files['audio']
+    
+    try:
+        # Read audio file
+        audio_data = audio_file.read()
+        
+        # Create a BytesIO object
+        from io import BytesIO
+        audio_buffer = BytesIO(audio_data)
+        
+        # Recognize speech
+        with sr.AudioFile(audio_buffer) as source:
+            audio = recognizer.record(source)
+        
+        try:
+            transcript = recognizer.recognize_google(audio)
+            logger.info(f"Recognized: {transcript}")
+            
+            # Process voice command
+            project_num = process_voice_command(transcript)
+            
+            return jsonify({
+                'success': True,
+                'transcript': transcript,
+                'project_detected': project_num
+            })
+            
+        except sr.UnknownValueError:
+            return jsonify({
+                'success': False,
+                'error': 'Could not understand audio',
+                'transcript': ''
+            }), 400
+        except sr.RequestError as e:
+            return jsonify({
+                'success': False,
+                'error': f'Recognition service error: {str(e)}'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error processing audio: {str(e)}")
+        return jsonify({'error': f'Error processing audio: {str(e)}'}), 500
+
+@app.route('/api/process-command', methods=['POST'])
+def process_command():
+    """Process a voice command by text"""
+    
+    data = request.json
+    transcript = data.get('transcript', '').strip()
+    
+    if not transcript:
+        return jsonify({'error': 'No transcript provided'}), 400
+    
+    # Process voice command
+    project_num = process_voice_command(transcript)
+    
+    if project_num:
+        # Send command to Arduino
+        success = send_project_command(project_num)
+        return jsonify({
+            'success': success,
+            'project': project_num,
+            'message': f'Project {project_num} command sent' if success else 'Failed to send command'
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'message': 'No matching keywords found'
+        })
+
+def process_voice_command(transcript):
+    """Extract project number from voice transcript"""
+    
+    if not transcript:
+        return None
+    
+    words = transcript.lower().split()
+    logger.info(f"Processing words: {words}")
+    
+    # Check against all project keywords
+    for project_num, keywords in WORD_PROJECT_MAP.items():
+        for keyword in keywords:
+            if keyword in words:
+                logger.info(f"Match found: '{keyword}' -> Project {project_num}")
+                return project_num
+    
+    logger.info("No matching keywords found")
+    return None
+
+def send_project_command(project_num):
+    """Send project command to Arduino via BLE"""
+    
+    if not BLE_AVAILABLE:
+        logger.warning("BLE not available")
+        return False
+    
+    # This would require actual BLE implementation
+    # For now, just log it
+    logger.info(f"Sending project {project_num} command to Arduino")
+    app_state.active_project = project_num
+    app_state.project_mode_active = True
+    
+    return True
+
+@app.route('/api/ble/connect', methods=['POST'])
+def ble_connect():
+    """Connect to BLE device"""
+    
+    if not BLE_AVAILABLE:
+        return jsonify({'error': 'BLE not available'}), 400
+    
+    # BLE connection logic would go here
+    app_state.ble_connected = True
+    logger.info("BLE Connected")
+    
+    return jsonify({'success': True, 'message': 'Connected to rover'})
+
+@app.route('/api/ble/disconnect', methods=['POST'])
+def ble_disconnect():
+    """Disconnect from BLE device"""
+    
+    app_state.ble_connected = False
+    app_state.project_mode_active = False
+    app_state.active_project = None
+    logger.info("BLE Disconnected")
+    
+    return jsonify({'success': True, 'message': 'Disconnected from rover'})
+
+@app.route('/api/project/<int:project_num>', methods=['POST'])
+def send_project(project_num):
+    """Send project command via button"""
+    
+    if project_num not in WORD_PROJECT_MAP:
+        return jsonify({'error': 'Invalid project number'}), 400
+    
+    success = send_project_command(project_num)
+    return jsonify({
+        'success': success,
+        'project': project_num,
+        'message': f'Project {project_num} command sent' if success else 'Failed to send command'
+    })
+
+@app.route('/api/stop', methods=['POST'])
+def stop_rover():
+    """Stop the rover"""
+    
+    logger.info("Stop command received")
+    app_state.project_mode_active = False
+    app_state.active_project = None
+    
+    return jsonify({'success': True, 'message': 'Rover stopped'})
 
 if __name__ == '__main__':
     # Get port from environment variable or default to 5000 for local development

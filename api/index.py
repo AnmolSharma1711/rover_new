@@ -1,16 +1,12 @@
-from flask import Flask, render_template
-import os
 import sys
+import os
+from pathlib import Path
 
-# Add parent directory to path so we can import templates
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add parent directory to Python path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-app = Flask(__name__, template_folder='../templates', static_folder='../templates')
+# Import the Flask app from app.py
+from app import app
 
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-# For Vercel serverless
-def handler(request):
-    return app(request.environ, request.start_response)
+# Vercel expects the WSGI application
+application = app

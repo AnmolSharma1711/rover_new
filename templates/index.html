@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Rover BLE Controller</title>
+    <title>Rover BLE Controller - Python Native</title>
     <style>
         * {
             box-sizing: border-box;
@@ -40,29 +40,30 @@
             letter-spacing: 3px;
         }
         
-        .connect-btn {
-            background: linear-gradient(135deg, #0066ff, #00ccff);
-            color: white;
-            padding: 12px 35px;
-            border: 2px solid #00ffff;
+        .connect-btn, .voice-btn, .project-btn, .stop-btn {
+            border: 2px solid;
             border-radius: 25px;
             font-size: 14px;
             cursor: pointer;
-            margin-bottom: 20px;
             font-weight: bold;
             text-transform: uppercase;
             letter-spacing: 1px;
             transition: all 0.3s ease;
+            padding: 12px 35px;
+            margin: 5px;
+        }
+        
+        .connect-btn {
+            background: linear-gradient(135deg, #0066ff, #00ccff);
+            color: white;
+            border-color: #00ffff;
             box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+            margin-bottom: 20px;
         }
         
         .connect-btn:hover {
             box-shadow: 0 0 30px rgba(0, 255, 255, 0.8);
             transform: translateY(-2px);
-        }
-        
-        .connect-btn:active {
-            transform: translateY(0);
         }
         
         #status {
@@ -98,15 +99,7 @@
         .voice-btn {
             background: linear-gradient(135deg, #ff0080, #ff8c00);
             color: white;
-            padding: 14px 40px;
-            border: 2px solid #ff0080;
-            border-radius: 25px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+            border-color: #ff0080;
             box-shadow: 0 0 20px rgba(255, 0, 128, 0.5);
         }
         
@@ -115,8 +108,8 @@
             transform: translateY(-2px);
         }
         
-        .voice-btn.listening {
-            background: linear-gradient(135deg, #ff0080, #ff0000);
+        .voice-btn.recording {
+            background: linear-gradient(135deg, #ff0000, #ff0080);
             animation: neon-pulse 0.6s infinite;
             box-shadow: 0 0 40px rgba(255, 0, 128, 1);
         }
@@ -155,16 +148,12 @@
         
         .project-btn {
             background: linear-gradient(135deg, #00ff88, #00ffcc);
-            border: 2px solid #00ff88;
+            border-color: #00ff88;
             border-radius: 12px;
             color: #001a00;
             font-size: 15px;
             font-weight: 800;
             padding: 18px 15px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-transform: uppercase;
-            letter-spacing: 1px;
             box-shadow: 0 0 20px rgba(0, 255, 136, 0.4);
         }
         
@@ -184,18 +173,13 @@
         
         .stop-btn {
             background: linear-gradient(135deg, #ff0000, #ff6600);
-            border: 2px solid #ff0000;
+            border-color: #ff0000;
             border-radius: 50%;
             color: white;
             font-size: 18px;
-            font-weight: bold;
             padding: 20px 30px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            box-shadow: 0 0 25px rgba(255, 0, 0, 0.6);
             min-width: 120px;
+            box-shadow: 0 0 25px rgba(255, 0, 0, 0.6);
         }
         
         .stop-btn:hover {
@@ -215,325 +199,204 @@
             margin: 20px 0;
             box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
         }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .info-box {
+            background: rgba(0, 100, 150, 0.3);
+            border: 1px solid #00ffff;
+            border-radius: 8px;
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 12px;
+            color: #00ffff;
+        }
     </style>
 </head>
 <body>
 
     <h2>◄► ROVER CONTROL ◄►</h2>
-    <div class="subtitle">━━ BLE COMMAND CENTER ━━</div>
+    <div class="subtitle">━━ PYTHON-NATIVE BLE ━━</div>
     
-    <button class="connect-btn" id="connectBtn">🔗 CONNECT TO ROVER</button>
+    <button class="connect-btn" id="connectBtn" onclick="connectToRover()">🔗 CONNECT TO ROVER</button>
     <div id="status">Status: DISCONNECTED</div>
 
     <div class="control-container">
         
         <div class="voice-section">
-            <button class="voice-btn" id="voiceBtn">🎤 VOICE INPUT</button>
-            <div class="voice-transcript" id="voiceTranscript">Ready for voice commands...</div>
+            <button class="voice-btn" id="voiceBtn" onclick="toggleVoiceInput()">🎤 VOICE INPUT</button>
+            <input type="file" id="audioFile" accept="audio/*" onchange="processAudioFile(event)">
+            <div class="voice-transcript" id="voiceTranscript">Click button to record voice command...</div>
+            <div class="info-box" id="infoBox">Using Python-native speech recognition</div>
         </div>
         
         <div class="divider"></div>
         
         <div class="project-panel">
-            <button class="project-btn" onclick="sendProjectCommand('1')">PROJECT 1</button>
-            <button class="project-btn" onclick="sendProjectCommand('2')">PROJECT 2</button>
-            <button class="project-btn" onclick="sendProjectCommand('3')">PROJECT 3</button>
-            <button class="project-btn" onclick="sendProjectCommand('4')">PROJECT 4</button>
+            <button class="project-btn" onclick="sendProjectCommand(1)">PROJECT 1</button>
+            <button class="project-btn" onclick="sendProjectCommand(2)">PROJECT 2</button>
+            <button class="project-btn" onclick="sendProjectCommand(3)">PROJECT 3</button>
+            <button class="project-btn" onclick="sendProjectCommand(4)">PROJECT 4</button>
         </div>
         
         <div class="stop-btn-container">
-            <button class="stop-btn" id="btn-s" onclick="sendCommand('S')">STOP</button>
+            <button class="stop-btn" onclick="stopRover()">STOP</button>
         </div>
 
     </div>
 
     <script>
-        // The UUIDs must exactly match your Arduino Uno BLE code
-        const UART_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-        const UART_RX_CHAR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
-        
-        // Word to Project Mapping
-        const wordProjectMap = {
-            'project1': ['generator', 'system'],
-            'project2': ['drone', 'fire'],
-            'project3': ['rickshaw', 'alcohol'],
-            'project4': ['water', 'management']
-        };
-        
-        let bleDevice;
-        let rxCharacteristic;
-        let projectModeActive = false;
-        let activeProject = null;
         const statusDiv = document.getElementById('status');
         const voiceTranscript = document.getElementById('voiceTranscript');
         const voiceBtn = document.getElementById('voiceBtn');
-        
-        // Speech Recognition Setup
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        let recognition;
-        let isListening = false;
-        let shouldKeepListening = false;
+        const audioFile = document.getElementById('audioFile');
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
 
-        if (SpeechRecognition) {
-            recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            recognition.language = 'en-US';
-            recognition.maxAlternatives = 1;
-            
-            console.log('Speech Recognition initialized');
-
-            recognition.onstart = () => {
-                isListening = true;
-                voiceBtn.classList.add('listening');
-                voiceBtn.textContent = '🎤 LISTENING...';
-                voiceTranscript.textContent = '▶ LISTENING FOR COMMANDS...';
-                console.log('Speech recognition started');
-            };
-
-            recognition.onresult = (event) => {
-                let interimTranscript = '';
-                let finalTranscript = '';
-                let hasValidFinal = false;
-
-                console.log(`Result event: resultIndex=${event.resultIndex}, results.length=${event.results.length}`);
-
-                for (let i = event.resultIndex; i < event.results.length; i++) {
-                    const result = event.results[i];
-                    
-                    // Get transcript with fallback to empty string
-                    const transcript = (result && result.transcript) ? result.transcript.toLowerCase().trim() : '';
-                    
-                    console.log(`Result ${i}: isFinal=${result.isFinal}, transcript="${transcript}", confidence=${result[0] ? result[0].confidence : 'N/A'}`);
-                    
-                    if (result.isFinal) {
-                        if (transcript.length > 0) {
-                            finalTranscript += transcript + ' ';
-                            hasValidFinal = true;
-                        }
-                    } else {
-                        if (transcript.length > 0) {
-                            interimTranscript += transcript;
-                        }
-                    }
-                }
-
-                // Display transcript
-                const finalTrimmed = finalTranscript.trim();
-                const interimTrimmed = interimTranscript.trim();
-                const displayText = finalTrimmed || interimTrimmed || '▶ LISTENING FOR COMMANDS...';
-                voiceTranscript.textContent = displayText;
-                console.log(`Display: "${displayText}"`);
-
-                // Process final transcript for project keywords (only if we got a valid final result)
-                if (hasValidFinal && finalTrimmed.length > 0) {
-                    console.log('Final transcript received:', finalTrimmed);
-                    processVoiceCommand(finalTrimmed);
-                }
-            };
-
-            recognition.onerror = (event) => {
-                console.error('Speech recognition error:', event.error);
-                
-                // Map error codes to user-friendly messages
-                const errorMessages = {
-                    'no-speech': '⚠ No speech detected. Please try again.',
-                    'audio-capture': '⚠ Microphone not available.',
-                    'network': '⚠ Network error. Check connection.',
-                    'not-allowed': '⚠ Microphone permission denied.',
-                    'bad-grammar': '⚠ Speech format error.'
-                };
-                
-                const message = errorMessages[event.error] || `⚠ Error: ${event.error}`;
-                voiceTranscript.textContent = message;
-                
-                // Auto-restart listening after short delay for minor errors
-                if (shouldKeepListening && (event.error === 'no-speech' || event.error === 'audio-capture')) {
-                    console.log('Auto-restarting speech recognition after error...');
-                    setTimeout(() => {
-                        if (shouldKeepListening && recognition) {
-                            try {
-                                isListening = true;
-                                recognition.start();
-                            } catch (e) {
-                                console.error('Failed to restart after error:', e);
-                            }
-                        }
-                    }, 500);
-                }
-            };
-
-            recognition.onend = () => {
-                isListening = false;
-                voiceBtn.classList.remove('listening');
-                voiceBtn.textContent = '🎤 VOICE INPUT';
-                console.log('Speech recognition ended. shouldKeepListening:', shouldKeepListening);
-                
-                // Auto-restart if still supposed to be listening (browser may stop it automatically)
-                if (shouldKeepListening && recognition) {
-                    console.log('Auto-restarting recognition...');
-                    setTimeout(() => {
-                        try {
-                            isListening = true;
-                            recognition.start();
-                        } catch (e) {
-                            console.error('Failed to restart:', e);
-                        }
-                    }, 100);
-                }
-            };
-
-            voiceBtn.addEventListener('click', () => {
-                if (isListening) {
-                    console.log('Stopping speech recognition');
-                    shouldKeepListening = false;
-                    recognition.stop();
-                } else {
-                    try {
-                        console.log('Starting speech recognition');
-                        shouldKeepListening = true;
-                        isListening = true;
-                        recognition.start();
-                    } catch (error) {
-                        console.error('Error starting recognition:', error);
-                        voiceTranscript.textContent = '⚠ Cannot start voice input. Reload page.';
-                    }
-                }
-            });
-        } else {
-            voiceBtn.textContent = '❌ NOT SUPPORTED';
-            voiceBtn.disabled = true;
-            voiceTranscript.textContent = '⚠ Web Speech API not supported';
-        }
-
-        function processVoiceCommand(transcript) {
-            if (!transcript || transcript.trim().length === 0) {
-                console.log('Empty transcript, skipping processing');
-                return;
-            }
-            
-            const words = transcript.toLowerCase().split(/\s+/);
-            console.log('Processing voice command. Words:', words);
-            
-            // Check against all project keywords
-            for (const [project, keywords] of Object.entries(wordProjectMap)) {
-                for (const keyword of keywords) {
-                    if (words.includes(keyword)) {
-                        const projectNumber = project.replace('project', '');
-                        console.log(`Voice match found - Keyword: ${keyword}, Project: ${projectNumber}`);
-                        voiceTranscript.textContent = `✓ DETECTED: "${keyword}" → PROJECT ${projectNumber}`;
-                        sendProjectCommand(projectNumber);
-                        return;
-                    }
-                }
-            }
-            
-            console.log('No matching keywords found in:', transcript);
-            voiceTranscript.textContent = `✗ NO MATCH: "${transcript}"`;
-        }
-
-        document.getElementById('connectBtn').addEventListener('click', async () => {
+        async function connectToRover() {
             try {
-                statusDiv.innerText = "Status: SCANNING...";
-                
-                // 1. Request the device (Requires user gesture like a click)
-                bleDevice = await navigator.bluetooth.requestDevice({
-                    filters: [{ name: 'RoverBLE' }],
-                    optionalServices: [UART_SERVICE_UUID]
-                });
-
-                // 2. Connect to the GATT server
                 statusDiv.innerText = "Status: CONNECTING...";
-                const server = await bleDevice.gatt.connect();
-
-                // 3. Get the UART Service
-                const service = await server.getPrimaryService(UART_SERVICE_UUID);
-
-                // 4. Get the RX Characteristic (to write data to the rover)
-                rxCharacteristic = await service.getCharacteristic(UART_RX_CHAR_UUID);
-
-                statusDiv.innerText = "Status: CONNECTED ✓";
-                statusDiv.style.borderColor = "#00ff88";
-                statusDiv.style.boxShadow = "0 0 20px rgba(0, 255, 136, 0.6)";
-
-                // Handle disconnects
-                bleDevice.addEventListener('gattserverdisconnected', () => {
-                    statusDiv.innerText = "Status: DISCONNECTED";
+                const response = await fetch('/api/ble/connect', { method: 'POST' });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    statusDiv.innerText = "Status: CONNECTED ✓";
+                    statusDiv.style.borderColor = "#00ff88";
+                    statusDiv.style.boxShadow = "0 0 20px rgba(0, 255, 136, 0.6)";
+                } else {
+                    statusDiv.innerText = "Status: CONNECTION FAILED";
                     statusDiv.style.borderColor = "#ff0000";
-                    statusDiv.style.boxShadow = "0 0 20px rgba(255, 0, 0, 0.3)";
-                    projectModeActive = false;
-                    activeProject = null;
-                });
-
+                }
             } catch (error) {
-                console.error(error);
                 statusDiv.innerText = "ERROR: " + error.message;
             }
-        });
+        }
 
-        async function writeBleCommand(cmd) {
-            if (!rxCharacteristic) {
-                console.log("Not connected - rxCharacteristic is null");
-                voiceTranscript.textContent = `⚠ NOT CONNECTED - Please connect to rover first`;
-                return false;
-            }
-            try {
-                // Convert the string character ('F', 'B', etc.) into an array of bytes to send over BLE
-                let encoder = new TextEncoder('utf-8');
-                let data = encoder.encode(cmd);
-                console.log("Sending BLE command:", cmd, "Data:", data);
-                await rxCharacteristic.writeValue(data);
-                console.log("Successfully sent to BLE:", cmd);
-                return true;
-            } catch (error) {
-                console.error("Write Error:", error);
-                voiceTranscript.textContent = `⚠ BLE Send Error: ${error.message}`;
-                return false;
+        async function toggleVoiceInput() {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                startRecording();
             }
         }
 
-        async function sendCommand(cmd) {
-            // Manual commands are ignored while project mode is active.
-            if (projectModeActive && cmd !== 'S') {
-                console.log("Manual command ignored: project mode is active.");
-                return;
-            }
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                isRecording = true;
 
-            if (cmd === 'S') {
-                projectModeActive = false;
-                activeProject = null;
+                voiceBtn.classList.add('recording');
+                voiceBtn.textContent = '🎤 RECORDING...';
+                voiceTranscript.textContent = '▶ Recording audio...';
+
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    await sendAudioToServer(audioBlob);
+                };
+
+                mediaRecorder.start();
+            } catch (error) {
+                voiceTranscript.textContent = '⚠ Microphone error: ' + error.message;
+                console.error('Recording error:', error);
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+                isRecording = false;
+                voiceBtn.classList.remove('recording');
+                voiceBtn.textContent = '🎤 VOICE INPUT';
+                voiceTranscript.textContent = '▶ Processing audio...';
+            }
+        }
+
+        async function sendAudioToServer(audioBlob) {
+            try {
+                const formData = new FormData();
+                formData.append('audio', audioBlob, 'audio.wav');
+
+                voiceTranscript.textContent = '▶ Sending to server...';
+                const response = await fetch('/api/recognize-speech', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    voiceTranscript.textContent = `✓ DETECTED: "${data.transcript}"`;
+                    if (data.project_detected) {
+                        voiceTranscript.textContent += ` → PROJECT ${data.project_detected}`;
+                    }
+                } else {
+                    voiceTranscript.textContent = `✗ Error: ${data.error}`;
+                }
+            } catch (error) {
+                voiceTranscript.textContent = `⚠ Server error: ${error.message}`;
+                console.error('Upload error:', error);
+            }
+        }
+
+        function processAudioFile(event) {
+            const file = event.target.files[0];
+            if (file) {
+                sendAudioToServer(file);
+            }
+        }
+
+        async function sendProjectCommand(projectNum) {
+            try {
+                statusDiv.innerText = `Status: PROJECT ${projectNum} ACTIVE`;
+                statusDiv.style.borderColor = "#00ffcc";
+                
+                const response = await fetch(`/api/project/${projectNum}`, { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    voiceTranscript.textContent = `✓ PROJECT ${projectNum} COMMAND SENT`;
+                }
+            } catch (error) {
+                statusDiv.innerText = "ERROR: " + error.message;
+            }
+        }
+
+        async function stopRover() {
+            try {
                 statusDiv.innerText = "Status: STOPPED";
                 statusDiv.style.borderColor = "#00ff88";
-            }
-
-            await writeBleCommand(cmd);
-        }
-
-        async function sendProjectCommand(projectCode) {
-            console.log("sendProjectCommand called with code:", projectCode);
-            
-            if (!rxCharacteristic) {
-                console.log("NOT CONNECTED - Cannot send project command");
-                voiceTranscript.textContent = `⚠ NOT CONNECTED - Please connect to rover first`;
-                statusDiv.innerText = "Status: CONNECT FIRST";
-                statusDiv.style.borderColor = "#ff6600";
-                return;
-            }
-            
-            projectModeActive = true;
-            activeProject = projectCode;
-            statusDiv.innerText = `Status: PROJECT ${projectCode} ACTIVE`;
-            statusDiv.style.borderColor = "#00ffcc";
-            const success = await writeBleCommand(projectCode);
-            if (success) {
-                console.log("Project command sent successfully via voice");
-                voiceTranscript.textContent = `✓ PROJECT ${projectCode} COMMAND SENT`;
-            } else {
-                console.log("Project command failed to send");
-                voiceTranscript.textContent = `⚠ FAILED TO SEND - Check connection`;
+                
+                const response = await fetch('/api/stop', { method: 'POST' });
+                const data = await response.json();
+                
+                voiceTranscript.textContent = '✓ Rover stopped';
+            } catch (error) {
+                statusDiv.innerText = "ERROR: " + error.message;
             }
         }
 
+        // Get initial status
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                console.log('App Status:', data);
+            } catch (error) {
+                console.error('Status check failed:', error);
+            }
+        }
+
+        updateStatus();
+        setInterval(updateStatus, 5000);
     </script>
 </body>
 </html>
