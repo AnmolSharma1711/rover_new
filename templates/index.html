@@ -284,6 +284,7 @@
                 voiceBtn.classList.add('listening');
                 voiceBtn.textContent = '🎤 LISTENING...';
                 voiceTranscript.textContent = '▶ LISTENING FOR COMMANDS...';
+                console.log('Speech recognition started');
             };
 
             recognition.onresult = (event) => {
@@ -291,16 +292,27 @@
                 let finalTranscript = '';
 
                 for (let i = event.resultIndex; i < event.results.length; i++) {
-                    const transcript = event.results[i].transcript.toLowerCase();
+                    // Check if transcript exists and is not empty
+                    if (!event.results[i] || !event.results[i].transcript) {
+                        console.log('Skipping result with undefined transcript');
+                        continue;
+                    }
+                    
+                    const transcript = event.results[i].transcript.toLowerCase().trim();
+                    
                     if (event.results[i].isFinal) {
-                        finalTranscript += transcript + ' ';
+                        if (transcript.length > 0) {
+                            finalTranscript += transcript + ' ';
+                        }
                     } else {
-                        interimTranscript += transcript;
+                        if (transcript.length > 0) {
+                            interimTranscript += transcript;
+                        }
                     }
                 }
 
                 // Display transcript
-                const displayText = finalTranscript || interimTranscript || '▶ LISTENING FOR COMMANDS...';
+                const displayText = finalTranscript.trim() || interimTranscript.trim() || '▶ LISTENING FOR COMMANDS...';
                 voiceTranscript.textContent = displayText;
 
                 // Process final transcript for project keywords
@@ -311,21 +323,50 @@
             };
 
             recognition.onerror = (event) => {
-                voiceTranscript.textContent = `⚠ ERROR: ${event.error}`;
-                console.error('Speech recognition error', event.error);
+                console.error('Speech recognition error:', event.error);
+                
+                // Map error codes to user-friendly messages
+                const errorMessages = {
+                    'no-speech': '⚠ No speech detected. Please try again.',
+                    'audio-capture': '⚠ Microphone not available.',
+                    'network': '⚠ Network error. Check connection.',
+                    'not-allowed': '⚠ Microphone permission denied.',
+                    'bad-grammar': '⚠ Speech format error.'
+                };
+                
+                const message = errorMessages[event.error] || `⚠ Error: ${event.error}`;
+                voiceTranscript.textContent = message;
+                
+                // Auto-restart listening after short delay for minor errors
+                if (isListening && (event.error === 'no-speech' || event.error === 'audio-capture')) {
+                    console.log('Auto-restarting speech recognition...');
+                    setTimeout(() => {
+                        if (isListening && recognition) {
+                            recognition.start();
+                        }
+                    }, 500);
+                }
             };
 
             recognition.onend = () => {
                 isListening = false;
                 voiceBtn.classList.remove('listening');
                 voiceBtn.textContent = '🎤 VOICE INPUT';
+                console.log('Speech recognition ended');
             };
 
             voiceBtn.addEventListener('click', () => {
                 if (isListening) {
+                    console.log('Stopping speech recognition');
                     recognition.stop();
                 } else {
-                    recognition.start();
+                    try {
+                        console.log('Starting speech recognition');
+                        recognition.start();
+                    } catch (error) {
+                        console.error('Error starting recognition:', error);
+                        voiceTranscript.textContent = '⚠ Cannot start voice input. Reload page.';
+                    }
                 }
             });
         } else {
@@ -335,6 +376,11 @@
         }
 
         function processVoiceCommand(transcript) {
+            if (!transcript || transcript.trim().length === 0) {
+                console.log('Empty transcript, skipping processing');
+                return;
+            }
+            
             const words = transcript.toLowerCase().split(/\s+/);
             console.log('Processing voice command. Words:', words);
             
@@ -434,6 +480,15 @@
 
         async function sendProjectCommand(projectCode) {
             console.log("sendProjectCommand called with code:", projectCode);
+            
+            if (!rxCharacteristic) {
+                console.log("NOT CONNECTED - Cannot send project command");
+                voiceTranscript.textContent = `⚠ NOT CONNECTED - Please connect to rover first`;
+                statusDiv.innerText = "Status: CONNECT FIRST";
+                statusDiv.style.borderColor = "#ff6600";
+                return;
+            }
+            
             projectModeActive = true;
             activeProject = projectCode;
             statusDiv.innerText = `Status: PROJECT ${projectCode} ACTIVE`;
@@ -441,8 +496,10 @@
             const success = await writeBleCommand(projectCode);
             if (success) {
                 console.log("Project command sent successfully via voice");
+                voiceTranscript.textContent = `✓ PROJECT ${projectCode} COMMAND SENT`;
             } else {
                 console.log("Project command failed to send");
+                voiceTranscript.textContent = `⚠ FAILED TO SEND - Check connection`;
             }
         }
 
