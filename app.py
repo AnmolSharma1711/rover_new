@@ -204,32 +204,19 @@ def send_project_command(project_num):
 
 @app.route('/api/ble/connect', methods=['POST'])
 def ble_connect():
-    """Connect to BLE device"""
-    
-    logger.info(f"BLE connect requested (BLE_AVAILABLE={BLE_AVAILABLE})")
-    
-    # Graceful handling: even if bleak is installed, it may not work on all platforms
-    # Just mark as connected for demo purposes
+    """Notify backend of BLE connection (actual connection done in browser)"""
     app_state.ble_connected = True
-    logger.info("BLE connection simulated/established")
-    
-    return jsonify({
-        'success': True, 
-        'message': 'Connected to rover',
-        'ble_available': BLE_AVAILABLE,
-        'mode': 'hardware' if BLE_AVAILABLE else 'simulated'
-    })
+    logger.info("Backend notified: BLE connected via browser")
+    return jsonify({'success': True, 'message': 'Connection registered'})
 
 @app.route('/api/ble/disconnect', methods=['POST'])
 def ble_disconnect():
-    """Disconnect from BLE device"""
-    
+    """Notify backend of BLE disconnection"""
     app_state.ble_connected = False
     app_state.project_mode_active = False
     app_state.active_project = None
-    logger.info("BLE Disconnected")
-    
-    return jsonify({'success': True, 'message': 'Disconnected from rover'})
+    logger.info("Backend notified: BLE disconnected")
+    return jsonify({'success': True, 'message': 'Disconnection registered'})
 
 @app.route('/api/project/<int:project_num>', methods=['POST'])
 def send_project(project_num):

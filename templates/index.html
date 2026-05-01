@@ -248,30 +248,73 @@
     </div>
 
     <script>
+        // Bluetooth UUIDs - must match your Arduino code
+        const UART_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+        const UART_RX_CHAR_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+        
         const statusDiv = document.getElementById('status');
         const voiceTranscript = document.getElementById('voiceTranscript');
         const voiceBtn = document.getElementById('voiceBtn');
         const audioFile = document.getElementById('audioFile');
+        
+        let bleDevice = null;
+        let rxCharacteristic = null;
         let mediaRecorder;
         let audioChunks = [];
         let isRecording = false;
 
+        // ====== CLIENT-SIDE BLE CONNECTION (prompts for RoverBLE) ======
         async function connectToRover() {
             try {
-                statusDiv.innerText = "Status: CONNECTING...";
-                const response = await fetch('/api/ble/connect', { method: 'POST' });
-                const data = await response.json();
+                statusDiv.innerText = "Status: SCANNING FOR RoverBLE...";
                 
-                if (response.ok) {
-                    statusDiv.innerText = "Status: CONNECTED ✓";
-                    statusDiv.style.borderColor = "#00ff88";
-                    statusDiv.style.boxShadow = "0 0 20px rgba(0, 255, 136, 0.6)";
-                } else {
-                    statusDiv.innerText = "Status: CONNECTION FAILED";
+                // This will prompt user to select RoverBLE device
+                bleDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'RoverBLE' }],
+                    optionalServices: [UART_SERVICE_UUID]
+                });
+
+                console.log('Device selected:', bleDevice.name);
+                statusDiv.innerText = "Status: CONNECTING...";
+                
+                const server = await bleDevice.gatt.connect();
+                const service = await server.getPrimaryService(UART_SERVICE_UUID);
+                rxCharacteristic = await service.getCharacteristic(UART_RX_CHAR_UUID);
+                
+                statusDiv.innerText = "Status: CONNECTED ✓ ("+bleDevice.name+")";
+                statusDiv.style.borderColor = "#00ff88";
+                statusDiv.style.boxShadow = "0 0 20px rgba(0, 255, 136, 0.6)";
+                
+                // Notify backend
+                await fetch('/api/ble/connect', { method: 'POST' });
+                
+                // Handle disconnect
+                bleDevice.addEventListener('gattserverdisconnected', () => {
+                    statusDiv.innerText = "Status: DISCONNECTED";
                     statusDiv.style.borderColor = "#ff0000";
-                }
+                    rxCharacteristic = null;
+                });
+                
             } catch (error) {
+                console.error('BLE Connection error:', error);
                 statusDiv.innerText = "ERROR: " + error.message;
+            }
+        }
+
+        async function writeBleCommand(cmd) {
+            if (!rxCharacteristic) {
+                console.log('Not connected to device');
+                return false;
+            }
+            try {
+                const encoder = new TextEncoder();
+                const data = encoder.encode(cmd);
+                await rxCharacteristic.writeValue(data);
+                console.log('Sent via BLE:', cmd);
+                return true;
+            } catch (error) {
+                console.error('BLE write error:', error);
+                return false;
             }
         }
 
@@ -316,7 +359,7 @@
                 isRecording = false;
                 voiceBtn.classList.remove('recording');
                 voiceBtn.textContent = '🎤 VOICE INPUT';
-                voiceTranscript.textContent = '▶ Processing audio...';
+                voiceTranscript.textContent = '▶ Processing...';
             }
         }
 
@@ -325,7 +368,7 @@
                 const formData = new FormData();
                 formData.append('audio', audioBlob, 'audio.wav');
 
-                voiceTranscript.textContent = '▶ Sending to server...';
+                voiceTranscript.textContent = '▶ Processing speech...';
                 const response = await fetch('/api/recognize-speech', {
                     method: 'POST',
                     body: formData
@@ -333,17 +376,18 @@
 
                 const data = await response.json();
 
-                if (data.success) {
-                    voiceTranscript.textContent = `✓ DETECTED: "${data.transcript}"`;
+                if (data.success && data.transcript) {
+                    voiceTranscript.textContent = `✓ "${data.transcript}"`;
                     if (data.project_detected) {
                         voiceTranscript.textContent += ` → PROJECT ${data.project_detected}`;
+                        sendProjectCommand(data.project_detected);
                     }
                 } else {
-                    voiceTranscript.textContent = `✗ Error: ${data.error}`;
+                    voiceTranscript.textContent = `✗ ${data.error || 'Unknown error'}`;
                 }
             } catch (error) {
-                voiceTranscript.textContent = `⚠ Server error: ${error.message}`;
-                console.error('Upload error:', error);
+                voiceTranscript.textContent = `⚠ ${error.message}`;
+                console.error('Voice error:', error);
             }
         }
 
@@ -359,14 +403,14 @@
                 statusDiv.innerText = `Status: PROJECT ${projectNum} ACTIVE`;
                 statusDiv.style.borderColor = "#00ffcc";
                 
-                const response = await fetch(`/api/project/${projectNum}`, { method: 'POST' });
-                const data = await response.json();
-                
-                if (data.success) {
-                    voiceTranscript.textContent = `✓ PROJECT ${projectNum} COMMAND SENT`;
+                // Send via BLE if connected
+                if (rxCharacteristic) {
+                    await writeBleCommand(String(projectNum));
                 }
+                
+                voiceTranscript.textContent = `✓ PROJECT ${projectNum}`;
             } catch (error) {
-                statusDiv.innerText = "ERROR: " + error.message;
+                statusDiv.innerText = "ERROR";
             }
         }
 
@@ -375,35 +419,26 @@
                 statusDiv.innerText = "Status: STOPPED";
                 statusDiv.style.borderColor = "#00ff88";
                 
-                const response = await fetch('/api/stop', { method: 'POST' });
-                const data = await response.json();
+                if (rxCharacteristic) {
+                    await writeBleCommand('S');
+                }
                 
-                voiceTranscript.textContent = '✓ Rover stopped';
+                voiceTranscript.textContent = '✓ STOPPED';
             } catch (error) {
-                statusDiv.innerText = "ERROR: " + error.message;
+                statusDiv.innerText = "ERROR";
             }
         }
 
-        // Get initial status
         async function updateStatus() {
             try {
                 const response = await fetch('/api/status');
                 const data = await response.json();
-                console.log('App Status:', data);
-                
-                // Update info box based on available features
                 const infoBox = document.getElementById('infoBox');
-                let infoText = '🐍 Python-native speech recognition';
-                
-                if (data.ble_available) {
-                    infoText += ' | 🔌 BLE connected';
-                } else {
-                    infoText += ' | ⚠ BLE not available (cloud mode)';
-                }
-                
+                let infoText = '🐍 Python voice engine';
+                infoText += bleDevice ? ' | 🔌 BLE ACTIVE' : ' | ⚠ BLE ready';
                 infoBox.textContent = infoText;
             } catch (error) {
-                console.error('Status check failed:', error);
+                console.error('Status error:', error);
             }
         }
 
