@@ -229,7 +229,7 @@
             <button class="voice-btn" id="voiceBtn" onclick="toggleVoiceInput()">🎤 VOICE INPUT</button>
             <input type="file" id="audioFile" accept="audio/*" onchange="processAudioFile(event)">
             <div class="voice-transcript" id="voiceTranscript">Click button to record voice command...</div>
-            <div class="info-box" id="infoBox">Using Python-native speech recognition</div>
+            <div class="info-box" id="infoBox">🐍 Loading system info...</div>
         </div>
         
         <div class="divider"></div>
@@ -390,6 +390,18 @@
                 const response = await fetch('/api/status');
                 const data = await response.json();
                 console.log('App Status:', data);
+                
+                // Update info box based on available features
+                const infoBox = document.getElementById('infoBox');
+                let infoText = '🐍 Python-native speech recognition';
+                
+                if (data.ble_available) {
+                    infoText += ' | 🔌 BLE connected';
+                } else {
+                    infoText += ' | ⚠ BLE not available (cloud mode)';
+                }
+                
+                infoBox.textContent = infoText;
             } catch (error) {
                 console.error('Status check failed:', error);
             }

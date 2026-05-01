@@ -169,8 +169,10 @@ def send_project_command(project_num):
     """Send project command to Arduino via BLE"""
     
     if not BLE_AVAILABLE:
-        logger.warning("BLE not available")
-        return False
+        logger.info(f"[SIMULATED] Project {project_num} command (BLE not available on this platform)")
+        app_state.active_project = project_num
+        app_state.project_mode_active = True
+        return True
     
     # This would require actual BLE implementation
     # For now, just log it
