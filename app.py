@@ -243,19 +243,31 @@ def process_voice_command(transcript):
     """Extract project number from voice transcript"""
     
     if not transcript:
+        logger.warning("Empty transcript received")
         return None
     
-    words = transcript.lower().split()
-    logger.info(f"Processing words: {words}")
+    transcript_lower = transcript.lower().strip()
+    words = transcript_lower.split()
+    
+    logger.info(f"Processing transcript: '{transcript}'")
+    logger.info(f"Lowercase: '{transcript_lower}'")
+    logger.info(f"Words: {words}")
+    logger.info(f"WORD_PROJECT_MAP: {WORD_PROJECT_MAP}")
     
     # Check against all project keywords
-    for project_num, keywords in WORD_PROJECT_MAP.items():
+    for project_num in sorted(WORD_PROJECT_MAP.keys()):
+        keywords = WORD_PROJECT_MAP[project_num]
         for keyword in keywords:
+            # Check if keyword is a complete word (word boundary matching)
             if keyword in words:
-                logger.info(f"Match found: '{keyword}' -> Project {project_num}")
+                logger.info(f"✓ MATCH FOUND: '{keyword}' in {words} → Project {project_num}")
+                return project_num
+            # Also check as substring for robustness
+            elif keyword in transcript_lower:
+                logger.info(f"✓ SUBSTRING MATCH: '{keyword}' in '{transcript_lower}' → Project {project_num}")
                 return project_num
     
-    logger.info("No matching keywords found")
+    logger.warning(f"❌ NO KEYWORDS MATCHED for: '{transcript}' (words: {words})")
     return None
 
 def send_project_command(project_num):
