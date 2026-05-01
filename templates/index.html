@@ -526,6 +526,38 @@
             }
         }
 
+        async function disconnectBLE() {
+            if (bleDevice && bleDevice.gatt.connected) {
+                try {
+                    await bleDevice.gatt.disconnect();
+                    console.log('BLE device disconnected');
+                } catch (error) {
+                    console.error('Error disconnecting BLE:', error);
+                }
+            }
+            bleDevice = null;
+            rxCharacteristic = null;
+            statusDiv.innerText = "Status: DISCONNECTED";
+            statusDiv.style.borderColor = "#ff0000";
+        }
+
+        // Reset BLE state when page loads
+        window.addEventListener('load', () => {
+            console.log('Page loaded - resetting BLE state');
+            bleDevice = null;
+            rxCharacteristic = null;
+            statusDiv.innerText = "Status: DISCONNECTED";
+            statusDiv.style.borderColor = "#ff0000";
+        });
+
+        // Disconnect BLE before page unload
+        window.addEventListener('beforeunload', () => {
+            if (bleDevice && bleDevice.gatt.connected) {
+                console.log('Page unloading - disconnecting BLE');
+                bleDevice.gatt.disconnect().catch(() => {});
+            }
+        });
+
         updateStatus();
         setInterval(updateStatus, 5000);
     </script>
