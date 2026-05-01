@@ -161,7 +161,7 @@ def recognize_speech():
             
             # Try Google Speech Recognition with timeout handling
             logger.info("Calling Google Speech API...")
-            transcript = recognizer.recognize_google(audio, language='en-US', timeout=30)
+            transcript = recognizer.recognize_google(audio, language='en-US')
             logger.info(f"Recognized: {transcript}")
             
             # Process voice command
