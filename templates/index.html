@@ -272,12 +272,16 @@
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition;
         let isListening = false;
+        let shouldKeepListening = false;
 
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = true;
             recognition.language = 'en-US';
+            recognition.maxAlternatives = 1;
+            
+            console.log('Speech Recognition initialized');
 
             recognition.onstart = () => {
                 isListening = true;
@@ -290,19 +294,22 @@
             recognition.onresult = (event) => {
                 let interimTranscript = '';
                 let finalTranscript = '';
+                let hasValidFinal = false;
+
+                console.log(`Result event: resultIndex=${event.resultIndex}, results.length=${event.results.length}`);
 
                 for (let i = event.resultIndex; i < event.results.length; i++) {
-                    // Check if transcript exists and is not empty
-                    if (!event.results[i] || !event.results[i].transcript) {
-                        console.log('Skipping result with undefined transcript');
-                        continue;
-                    }
+                    const result = event.results[i];
                     
-                    const transcript = event.results[i].transcript.toLowerCase().trim();
+                    // Get transcript with fallback to empty string
+                    const transcript = (result && result.transcript) ? result.transcript.toLowerCase().trim() : '';
                     
-                    if (event.results[i].isFinal) {
+                    console.log(`Result ${i}: isFinal=${result.isFinal}, transcript="${transcript}", confidence=${result[0] ? result[0].confidence : 'N/A'}`);
+                    
+                    if (result.isFinal) {
                         if (transcript.length > 0) {
                             finalTranscript += transcript + ' ';
+                            hasValidFinal = true;
                         }
                     } else {
                         if (transcript.length > 0) {
@@ -312,13 +319,16 @@
                 }
 
                 // Display transcript
-                const displayText = finalTranscript.trim() || interimTranscript.trim() || '▶ LISTENING FOR COMMANDS...';
+                const finalTrimmed = finalTranscript.trim();
+                const interimTrimmed = interimTranscript.trim();
+                const displayText = finalTrimmed || interimTrimmed || '▶ LISTENING FOR COMMANDS...';
                 voiceTranscript.textContent = displayText;
+                console.log(`Display: "${displayText}"`);
 
-                // Process final transcript for project keywords
-                if (finalTranscript && finalTranscript.trim().length > 0) {
-                    console.log('Final transcript received:', finalTranscript);
-                    processVoiceCommand(finalTranscript.trim());
+                // Process final transcript for project keywords (only if we got a valid final result)
+                if (hasValidFinal && finalTrimmed.length > 0) {
+                    console.log('Final transcript received:', finalTrimmed);
+                    processVoiceCommand(finalTrimmed);
                 }
             };
 
@@ -338,11 +348,16 @@
                 voiceTranscript.textContent = message;
                 
                 // Auto-restart listening after short delay for minor errors
-                if (isListening && (event.error === 'no-speech' || event.error === 'audio-capture')) {
-                    console.log('Auto-restarting speech recognition...');
+                if (shouldKeepListening && (event.error === 'no-speech' || event.error === 'audio-capture')) {
+                    console.log('Auto-restarting speech recognition after error...');
                     setTimeout(() => {
-                        if (isListening && recognition) {
-                            recognition.start();
+                        if (shouldKeepListening && recognition) {
+                            try {
+                                isListening = true;
+                                recognition.start();
+                            } catch (e) {
+                                console.error('Failed to restart after error:', e);
+                            }
                         }
                     }, 500);
                 }
@@ -352,16 +367,32 @@
                 isListening = false;
                 voiceBtn.classList.remove('listening');
                 voiceBtn.textContent = '🎤 VOICE INPUT';
-                console.log('Speech recognition ended');
+                console.log('Speech recognition ended. shouldKeepListening:', shouldKeepListening);
+                
+                // Auto-restart if still supposed to be listening (browser may stop it automatically)
+                if (shouldKeepListening && recognition) {
+                    console.log('Auto-restarting recognition...');
+                    setTimeout(() => {
+                        try {
+                            isListening = true;
+                            recognition.start();
+                        } catch (e) {
+                            console.error('Failed to restart:', e);
+                        }
+                    }, 100);
+                }
             };
 
             voiceBtn.addEventListener('click', () => {
                 if (isListening) {
                     console.log('Stopping speech recognition');
+                    shouldKeepListening = false;
                     recognition.stop();
                 } else {
                     try {
                         console.log('Starting speech recognition');
+                        shouldKeepListening = true;
+                        isListening = true;
                         recognition.start();
                     } catch (error) {
                         console.error('Error starting recognition:', error);
