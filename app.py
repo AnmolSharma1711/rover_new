@@ -161,52 +161,55 @@ def recognize_speech():
             
             # Try Google Speech Recognition with timeout handling
             logger.info("Calling Google Speech API...")
-            try:
-                transcript = recognizer.recognize_google(audio, language='en-US', timeout=30)
-                logger.info(f"Recognized: {transcript}")
-                
-                # Process voice command
-                project_num = process_voice_command(transcript)
-                
-                return jsonify({
-                    'success': True,
-                    'transcript': transcript,
-                    'project_detected': project_num
-                })
-                
-            except socket.timeout:
-                logger.error("Google API timeout - network too slow or API unreachable")
-                return jsonify({
-                    'success': False,
-                    'error': 'Speech service timeout - please try again or speak again'
-                }), 504
-                
-            except sr.UnknownValueError:
-                logger.warning("Could not understand audio")
-                return jsonify({
-                    'success': False,
-                    'error': 'Could not understand audio (speech too quiet or unclear)',
-                    'transcript': ''
-                }), 400
-                
-            except sr.RequestError as api_error:
-                error_msg = str(api_error)
-                logger.error(f"Google API error: {error_msg}")
-                
-                # Check if it's a network issue
-                if 'timed out' in error_msg.lower() or 'network' in error_msg.lower() or 'connection' in error_msg.lower():
-                    return jsonify({
-                        'success': False,
-                        'error': 'Network error - speech service unreachable'
-                    }), 503
-                else:
-                    return jsonify({
-                        'success': False,
-                        'error': f'Speech service error: {error_msg}'
-                    }), 503
+            transcript = recognizer.recognize_google(audio, language='en-US', timeout=30)
+            logger.info(f"Recognized: {transcript}")
             
+            # Process voice command
+            project_num = process_voice_command(transcript)
+            
+            return jsonify({
+                'success': True,
+                'transcript': transcript,
+                'project_detected': project_num
+            })
+            
+        except socket.timeout:
+            logger.error("Google API timeout - network too slow or API unreachable")
+            return jsonify({
+                'success': False,
+                'error': 'Speech service timeout - please try again'
+            }), 504
+            
+        except sr.UnknownValueError:
+            logger.warning("Could not understand audio")
+            return jsonify({
+                'success': False,
+                'error': 'Could not understand audio (speech too quiet or unclear)',
+                'transcript': ''
+            }), 400
+            
+        except sr.RequestError as api_error:
+            error_msg = str(api_error)
+            logger.error(f"Google API error: {error_msg}")
+            
+            # Check if it's a network issue
+            if 'timed out' in error_msg.lower() or 'network' in error_msg.lower() or 'connection' in error_msg.lower():
+                return jsonify({
+                    'success': False,
+                    'error': 'Network error - speech service unreachable'
+                }), 503
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': f'Speech service error: {error_msg}'
+                }), 503
+        
+        except Exception as e:
+            logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+            return jsonify({'error': f'Server error: {str(e)}'}), 500
+    
     except Exception as e:
-        logger.error(f"Unexpected error processing audio: {str(e)}", exc_info=True)
+        logger.error(f"Error processing audio: {str(e)}", exc_info=True)
         return jsonify({'error': f'Server error: {str(e)}'}), 500
 
 @app.route('/api/process-command', methods=['POST'])
