@@ -368,25 +368,40 @@
                 const formData = new FormData();
                 formData.append('audio', audioBlob, 'audio.wav');
 
-                voiceTranscript.textContent = '▶ Processing speech...';
+                voiceTranscript.textContent = '▶ Sending to server...';
                 const response = await fetch('/api/recognize-speech', {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    timeout: 45000
                 });
 
                 const data = await response.json();
 
-                if (data.success && data.transcript) {
+                // Handle HTTP errors
+                if (response.status === 503 || response.status === 504) {
+                    voiceTranscript.textContent = `⚠ Service temporarily unavailable - try again`;
+                    console.error('Server error:', response.status, data.error);
+                } else if (response.status === 500) {
+                    voiceTranscript.textContent = `✗ Server error - speech service failed`;
+                    console.error('Server error 500:', data.error);
+                } else if (!response.ok) {
+                    voiceTranscript.textContent = `✗ ${data.error || 'Request failed'}`;
+                    console.error('Response error:', response.status, data);
+                } else if (data.success && data.transcript) {
                     voiceTranscript.textContent = `✓ "${data.transcript}"`;
                     if (data.project_detected) {
                         voiceTranscript.textContent += ` → PROJECT ${data.project_detected}`;
                         sendProjectCommand(data.project_detected);
                     }
                 } else {
-                    voiceTranscript.textContent = `✗ ${data.error || 'Unknown error'}`;
+                    voiceTranscript.textContent = `✗ ${data.error || 'Could not process audio'}`;
                 }
             } catch (error) {
-                voiceTranscript.textContent = `⚠ ${error.message}`;
+                if (error.name === 'AbortError') {
+                    voiceTranscript.textContent = `⚠ Request timeout - server too slow`;
+                } else {
+                    voiceTranscript.textContent = `⚠ Network error: ${error.message}`;
+                }
                 console.error('Voice error:', error);
             }
         }

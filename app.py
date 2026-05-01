@@ -31,12 +31,22 @@ app_state = AppState()
 # Try to import speech recognition library
 try:
     import speech_recognition as sr
-    SPEECH_RECOGNITION_AVAILABLE = True
+    import socket
+    
     recognizer = sr.Recognizer()
+    recognizer.energy_threshold = 4000
+    
+    # Set socket timeout for Google API calls (30 seconds)
+    socket.setdefaulttimeout(30)
+    
+    SPEECH_RECOGNITION_AVAILABLE = True
     logger.info("Speech Recognition library loaded successfully")
-except ImportError:
+except ImportError as e:
     SPEECH_RECOGNITION_AVAILABLE = False
-    logger.warning("speech_recognition library not installed. Run: pip install SpeechRecognition")
+    logger.warning(f"speech_recognition library not installed: {str(e)}")
+except Exception as e:
+    SPEECH_RECOGNITION_AVAILABLE = False
+    logger.warning(f"Failed to initialize speech recognition: {str(e)}")
 
 # Try to import BLE library
 try:
@@ -66,12 +76,48 @@ def get_status():
         'ble_available': BLE_AVAILABLE
     })
 
+@app.route('/api/diagnostics', methods=['GET'])
+def diagnostics():
+    """Check if all systems are ready"""
+    diagnostics_data = {
+        'speech_recognition': {
+            'available': SPEECH_RECOGNITION_AVAILABLE,
+            'library': 'SpeechRecognition',
+            'api': 'Google Speech-to-Text'
+        },
+        'ble': {
+            'available': BLE_AVAILABLE,
+            'library': 'bleak',
+            'note': 'BLE requires client-side Web Bluetooth API in browser'
+        },
+        'platform': os.name,
+        'environment': 'Vercel' if 'VERCEL' in os.environ else 'Local Development'
+    }
+    return jsonify(diagnostics_data)
+
+@app.route('/api/test-voice', methods=['POST'])
+def test_voice():
+    """Test voice recognition with a manual transcript"""
+    data = request.json or {}
+    test_transcript = data.get('transcript', 'fire test')
+    
+    logger.info(f"Testing voice recognition with: {test_transcript}")
+    project_num = process_voice_command(test_transcript)
+    
+    return jsonify({
+        'success': True,
+        'transcript': test_transcript,
+        'project_detected': project_num,
+        'message': f'Project {project_num} detected' if project_num else 'No keywords matched'
+    })
+
 @app.route('/api/recognize-speech', methods=['POST'])
 def recognize_speech():
     """Process audio file and recognize speech"""
     
     if not SPEECH_RECOGNITION_AVAILABLE:
-        return jsonify({'error': 'Speech recognition not available'}), 400
+        logger.error("Speech recognition not available")
+        return jsonify({'error': 'Speech recognition not available on this server'}), 503
     
     if 'audio' not in request.files:
         return jsonify({'error': 'No audio file provided'}), 400
@@ -87,57 +133,81 @@ def recognize_speech():
         
         logger.info(f"Received audio data: {len(audio_data)} bytes")
         
+        # Parse WAV file to extract raw audio data
+        import wave
+        from io import BytesIO
+        
         try:
-            # Parse WAV file to extract raw audio data
-            import wave
-            from io import BytesIO
-            
             wav_buffer = BytesIO(audio_data)
             with wave.open(wav_buffer, 'rb') as wav_file:
                 # Get audio parameters
                 n_channels = wav_file.getnchannels()
                 sample_width = wav_file.getsampwidth()
                 frame_rate = wav_file.getframerate()
+                n_frames = wav_file.getnframes()
                 
-                logger.info(f"WAV: channels={n_channels}, sample_width={sample_width}, rate={frame_rate}")
+                logger.info(f"WAV: channels={n_channels}, sample_width={sample_width}, rate={frame_rate}, frames={n_frames}")
                 
                 # Read all frames
-                frames = wav_file.readframes(wav_file.getnframes())
-            
+                frames = wav_file.readframes(n_frames)
+        except Exception as wav_error:
+            logger.error(f"WAV parsing error: {str(wav_error)}")
+            return jsonify({'error': f'Invalid audio format: {str(wav_error)}'}), 400
+        
+        try:
             # Create AudioData object from raw frames
             audio = sr.AudioData(frames, frame_rate, sample_width)
-            logger.info("Audio object created from WAV data")
+            logger.info("Audio object created successfully")
             
-            # Try Google Speech Recognition
-            transcript = recognizer.recognize_google(audio)
-            logger.info(f"Recognized: {transcript}")
-            
-            # Process voice command
-            project_num = process_voice_command(transcript)
-            
-            return jsonify({
-                'success': True,
-                'transcript': transcript,
-                'project_detected': project_num
-            })
-            
-        except sr.UnknownValueError:
-            logger.warning("Could not understand audio")
-            return jsonify({
-                'success': False,
-                'error': 'Could not understand audio',
-                'transcript': ''
-            }), 400
-        except sr.RequestError as e:
-            logger.error(f"Google API error: {str(e)}")
-            return jsonify({
-                'success': False,
-                'error': f'Speech service unavailable: {str(e)}'
-            }), 503
+            # Try Google Speech Recognition with timeout handling
+            logger.info("Calling Google Speech API...")
+            try:
+                transcript = recognizer.recognize_google(audio, language='en-US', timeout=30)
+                logger.info(f"Recognized: {transcript}")
+                
+                # Process voice command
+                project_num = process_voice_command(transcript)
+                
+                return jsonify({
+                    'success': True,
+                    'transcript': transcript,
+                    'project_detected': project_num
+                })
+                
+            except socket.timeout:
+                logger.error("Google API timeout - network too slow or API unreachable")
+                return jsonify({
+                    'success': False,
+                    'error': 'Speech service timeout - please try again or speak again'
+                }), 504
+                
+            except sr.UnknownValueError:
+                logger.warning("Could not understand audio")
+                return jsonify({
+                    'success': False,
+                    'error': 'Could not understand audio (speech too quiet or unclear)',
+                    'transcript': ''
+                }), 400
+                
+            except sr.RequestError as api_error:
+                error_msg = str(api_error)
+                logger.error(f"Google API error: {error_msg}")
+                
+                # Check if it's a network issue
+                if 'timed out' in error_msg.lower() or 'network' in error_msg.lower() or 'connection' in error_msg.lower():
+                    return jsonify({
+                        'success': False,
+                        'error': 'Network error - speech service unreachable'
+                    }), 503
+                else:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Speech service error: {error_msg}'
+                    }), 503
             
     except Exception as e:
-        logger.error(f"Error processing audio: {str(e)}", exc_info=True)
-        return jsonify({'error': f'Error processing audio: {str(e)}'}), 500
+        logger.error(f"Unexpected error processing audio: {str(e)}", exc_info=True)
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
 
 @app.route('/api/process-command', methods=['POST'])
 def process_command():
