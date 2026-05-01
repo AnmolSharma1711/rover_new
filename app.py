@@ -166,11 +166,12 @@ def recognize_speech():
             
             # Process voice command
             project_num = process_voice_command(transcript)
+            logger.info(f"Final project_detected: {project_num} (type: {type(project_num)})")
             
             return jsonify({
                 'success': True,
                 'transcript': transcript,
-                'project_detected': project_num
+                'project_detected': project_num if project_num else None
             })
             
         except socket.timeout:
