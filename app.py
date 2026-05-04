@@ -12,11 +12,11 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 # Word to Project Mapping
-WORD_PROJECT_MAP = {
-    1: ['generator', 'system'],
-    2: ['drone', 'fire'],
-    3: ['rickshaw', 'alcohol'],
-    4: ['water', 'management']
+WORD_PROJECT_MAP = { 
+    4: ['generator','electric', 'power'],
+    3: ['drone', 'fire','fighting','extinguisher'],
+    2: ['rickshaw', 'alcohol','smart'],
+    1: ['water', 'management','tank']
 }
 
 # Global state
